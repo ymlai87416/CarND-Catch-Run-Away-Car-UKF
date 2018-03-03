@@ -25,6 +25,58 @@ std::string hasData(std::string s) {
   return "";
 }
 
+void findInterceptLocation(double hunter_x, double hunter_y, UKF* ukf, double& intercept_x, double& intercept_y){
+  VectorXd x = ukf -> x_;
+  MatrixXd P = ukf -> P_;
+
+  float t_max = 128;
+  float t_min = 0;
+  float t_mid = 0;
+  double target_x = x[0];
+  double target_y = x[1];
+  double dist_hunter_intercept;
+  double dist_target_intercept;
+  double intercept_try_x;
+  double intercept_try_y;
+
+  int max_iter = 50;
+  bool find_intercept_loc = false;
+
+  while(t_max > t_min && max_iter > 0){
+    //restore ukf x and P parameter
+    ukf -> x_ = x;
+    ukf -> P_ = P;
+
+    t_mid = (t_max + t_min)/2;
+    ukf->Prediction(t_mid);
+
+    intercept_try_x = ukf->x_[0];
+    intercept_try_y = ukf->x_[1];
+
+    dist_hunter_intercept = sqrt((hunter_x - intercept_try_x) * (hunter_x - intercept_try_x)
+                                 + (hunter_y - intercept_try_y) * (hunter_y - intercept_try_y));
+    dist_target_intercept = sqrt((target_x - intercept_try_x) * (target_x - intercept_try_x)
+                                 + (target_y - intercept_try_y) * (target_y - intercept_try_y));
+
+    if(fabs(dist_hunter_intercept - dist_target_intercept) < 0.1){
+      find_intercept_loc = true;
+
+      intercept_x = intercept_try_x;
+      intercept_y = intercept_try_y;
+    }
+
+    --max_iter;
+  }
+
+  if(!find_intercept_loc){
+    intercept_x = x[0];
+    intercept_y = x[1];
+  }
+
+  ukf -> x_ = x;
+  ukf -> P_ = P;
+}
+
 int main()
 {
   uWS::Hub h;
@@ -61,11 +113,11 @@ int main()
           
           MeasurementPackage meas_package_L;
           istringstream iss_L(lidar_measurment);
-    	  long long timestamp_L;
+          long long timestamp_L;
 
-    	  // reads first element from the current line
-    	  string sensor_type_L;
-    	  iss_L >> sensor_type_L;
+          // reads first element from the current line
+          string sensor_type_L;
+          iss_L >> sensor_type_L;
 
       	  // read measurements at this timestamp
       	  meas_package_L.sensor_type_ = MeasurementPackage::LASER;
@@ -78,17 +130,17 @@ int main()
           iss_L >> timestamp_L;
           meas_package_L.timestamp_ = timestamp_L;
           
-    	  ukf.ProcessMeasurement(meas_package_L);
+    	    ukf.ProcessMeasurement(meas_package_L);
 		 
-    	  string radar_measurment = j[1]["radar_measurement"];
+    	    string radar_measurment = j[1]["radar_measurement"];
           
           MeasurementPackage meas_package_R;
           istringstream iss_R(radar_measurment);
-    	  long long timestamp_R;
+    	    long long timestamp_R;
 
-    	  // reads first element from the current line
-    	  string sensor_type_R;
-    	  iss_R >> sensor_type_R;
+          // reads first element from the current line
+          string sensor_type_R;
+          iss_R >> sensor_type_R;
 
       	  // read measurements at this timestamp
       	  meas_package_R.sensor_type_ = MeasurementPackage::RADAR;
@@ -102,21 +154,26 @@ int main()
           meas_package_R.raw_measurements_ << ro,theta, ro_dot;
           iss_R >> timestamp_R;
           meas_package_R.timestamp_ = timestamp_R;
-          
-    	  ukf.ProcessMeasurement(meas_package_R);
 
-	  target_x = ukf.x_[0];
-	  target_y = ukf.x_[1];
+          ukf.ProcessMeasurement(meas_package_R);
 
-    	  double heading_to_target = atan2(target_y - hunter_y, target_x - hunter_x);
-    	  while (heading_to_target > M_PI) heading_to_target-=2.*M_PI; 
-    	  while (heading_to_target <-M_PI) heading_to_target+=2.*M_PI;
-    	  //turn towards the target
-    	  double heading_difference = heading_to_target - hunter_heading;
-    	  while (heading_difference > M_PI) heading_difference-=2.*M_PI; 
-    	  while (heading_difference <-M_PI) heading_difference+=2.*M_PI;
+          target_x = ukf.x_[0];
+          target_y = ukf.x_[1];
 
-    	  double distance_difference = sqrt((target_y - hunter_y)*(target_y - hunter_y) + (target_x - hunter_x)*(target_x - hunter_x));
+          //find interception point
+          double intercept_x;
+          double intercept_y;
+          findInterceptLocation(hunter_x, hunter_y, &ukf, intercept_x, intercept_y);
+
+          double heading_to_target = atan2(intercept_y - hunter_y, intercept_x - hunter_x);
+          while (heading_to_target > M_PI) heading_to_target-=2.*M_PI;
+          while (heading_to_target <-M_PI) heading_to_target+=2.*M_PI;
+          //turn towards the target
+          double heading_difference = heading_to_target - hunter_heading;
+          while (heading_difference > M_PI) heading_difference-=2.*M_PI;
+          while (heading_difference <-M_PI) heading_difference+=2.*M_PI;
+
+          double distance_difference = sqrt((intercept_y - hunter_y)*(intercept_y - hunter_y) + (intercept_x - hunter_x)*(intercept_x - hunter_x));
 
           json msgJson;
           msgJson["turn"] = heading_difference;

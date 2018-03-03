@@ -92,6 +92,13 @@ public:
   void Prediction(double delta_t);
 
   /**
+   * Prediction Predicts sigma points, the state, and the state covariance
+   * matrix
+   * @param delta_t Time between k and k+1 in s
+   */
+  void Prediction(double delta_t);
+
+  /**
    * Updates the state and the state covariance matrix using a laser measurement
    * @param meas_package The measurement at k+1
    */
@@ -102,6 +109,34 @@ public:
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+
+private:
+
+  ///* Radar measurement dimension
+  int n_radar_;
+
+  ///* Laser measurement dimension
+  int n_laser_;
+
+  ///* Previous timestamp
+  long previous_timestamp_;
+
+  ///* Laser measurement noise covariance
+  MatrixXd R_laser_;
+
+  ///* Radar measurement noise covariance
+  MatrixXd R_radar_;
+
+  ///* normalize radar measurement vector
+  VectorXd NormalizeRadarMeasurementVector(VectorXd vector);
+
+  ///* normalize state measurement vector
+  VectorXd NormalizeStateVector(VectorXd vector);
+
+  ///* logging nis data
+  std::ofstream nis_laser_;
+
+  std::ofstream nis_radar_;
 };
 
 #endif /* UKF_H */
