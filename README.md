@@ -81,7 +81,7 @@ the run-away robot reach the same point at the same time.
 
 To find out the point, I use binary search within the time interval (0s, 8s), the result will give us the intercept point.
 
-The algorithm is implemented in void findInterceptLocation(double hunter_x, double hunter_y, UKF* ukf, double& intercept_x, double& intercept_y) in main.cpp
+The algorithm is implemented in `void findInterceptLocation(double hunter_x, double hunter_y, UKF* ukf, double& intercept_x, double& intercept_y)` in ` main.cpp`
 
 Here is the details:
 
