@@ -74,3 +74,49 @@ Here is the main protocol that `main.cpp` uses for uWebSocketIO in communicating
 3. Compile: `cmake .. && make`
 4. Run it: `./UnscentedKF` 
 
+## Implementation
+
+To intercept the run-away robot, the path with the shortest time is the time where the hunter (vehicle controlled by me) and 
+the run-away robot reach the same point at the same time.
+
+To find out the point, I use binary search within the time interval (0s, 8s), the result will give us the intercept point.
+
+The algorithm is implemented in void findInterceptLocation(double hunter_x, double hunter_y, UKF* ukf, double& intercept_x, double& intercept_y) in main.cpp
+
+Here is the details:
+
+```c++
+Set t_max (maximum search time) = 8s
+Set t_min (minimum search time) = 0s
+Set hunter velocity = 5m/s
+Set maximum iteration = 10
+Set best_intercept_time_diff = 1000s
+
+While t_max > t_min and the number of iteration is less than maximum iteration:
+    set t_mid = (t_max + t_min)/2
+    use UKF to find out the location of run-away robot at t_mid, denote it as try_intercept_point
+    find the distance between the hunter and try_intercept_point
+    find the time for the hunter to reach try_intercept_point, denote it as time_intercept
+    
+    calculate the difference between t_mid and time_intercept, denote it as intercept_time_diff
+    
+    if best_intercept_time_diff > intercept_time_diff
+        Set best_intercept_time_diff = intercept_time_diff
+        Set result_intercept_point = try_intercept_point
+    
+    if intercept_time_diff > t_mid
+        t_min = t_mid, it is because we need more time for the robot to make mistake
+    else if intercept_time_diff < t_mid    
+        t_max = t_mid, try to find an intercept path with shorter time.
+        
+Return the result_intercept_point
+```
+
+### Result
+Here is the [result](https://youtu.be/40h_eBTMvLg) . 
+
+
+    
+    
+
+
