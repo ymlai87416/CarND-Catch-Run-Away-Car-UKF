@@ -29,17 +29,19 @@ void findInterceptLocation(double hunter_x, double hunter_y, UKF* ukf, double& i
   VectorXd x = ukf -> x_;
   MatrixXd P = ukf -> P_;
 
-  float t_max = 128;
+  float t_max = 8;
   float t_min = 0;
   float t_mid = 0;
   double target_x = x[0];
   double target_y = x[1];
-  double dist_hunter_intercept;
   double dist_target_intercept;
+  double time_intercept;
   double intercept_try_x;
   double intercept_try_y;
+  double best_deal = 1000;
+  double max_v = 5;
 
-  int max_iter = 50;
+  int max_iter = 10;
   bool find_intercept_loc = false;
 
   while(t_max > t_min && max_iter > 0){
@@ -53,28 +55,87 @@ void findInterceptLocation(double hunter_x, double hunter_y, UKF* ukf, double& i
     intercept_try_x = ukf->x_[0];
     intercept_try_y = ukf->x_[1];
 
-    dist_hunter_intercept = sqrt((hunter_x - intercept_try_x) * (hunter_x - intercept_try_x)
+    dist_target_intercept = sqrt((hunter_x - intercept_try_x) * (hunter_x - intercept_try_x)
                                  + (hunter_y - intercept_try_y) * (hunter_y - intercept_try_y));
-    dist_target_intercept = sqrt((target_x - intercept_try_x) * (target_x - intercept_try_x)
-                                 + (target_y - intercept_try_y) * (target_y - intercept_try_y));
+    time_intercept = dist_target_intercept / max_v;
 
-    if(fabs(dist_hunter_intercept - dist_target_intercept) < 0.1){
-      find_intercept_loc = true;
+    double diff_time_intercept = fabs(t_mid - time_intercept);
 
+    if(diff_time_intercept < best_deal){
+      best_deal= diff_time_intercept;
       intercept_x = intercept_try_x;
       intercept_y = intercept_try_y;
     }
 
-    --max_iter;
-  }
+    /*
+    if(diff_time_intercept < 0.002){
+      find_intercept_loc = true;
+      std::cout << "Intercept: Find interception at time: " << t_mid << " intercept at: " << intercept_try_x << " " << intercept_try_y << std::endl;
 
-  if(!find_intercept_loc){
-    intercept_x = x[0];
-    intercept_y = x[1];
+      intercept_x = intercept_try_x;
+      intercept_y = intercept_try_y;
+      break;
+    }*/
+
+    if(time_intercept > t_mid)
+      t_min = t_mid;
+    else if (time_intercept < t_mid)
+      t_max = t_mid;
+
+    --max_iter;
   }
 
   ukf -> x_ = x;
   ukf -> P_ = P;
+}
+
+void findInterceptLocation2(long timestamp, double hunter_x, double hunter_y, UKF* ukf, double& intercept_x, double& intercept_y){
+  VectorXd x = ukf -> x_;
+  MatrixXd P = ukf -> P_;
+
+  float t_max = 8;
+  float t_min = 0;
+  float t_mid = 0;
+  double target_x = x[0];
+  double target_y = x[1];
+  double dist_target_intercept;
+  double time_intercept;
+  double intercept_try_x;
+  double intercept_try_y;
+  double best_deal = 1000;
+  double max_v = 5;
+
+  bool find_intercept_loc = false;
+
+  for(int i=0; i< 8*5; ++i){
+    t_mid = i*1.0/5;
+    //restore ukf x and P parameter
+    ukf -> x_ = x;
+    ukf -> P_ = P;
+
+    ukf->Prediction(t_mid);
+
+    intercept_try_x = ukf->x_[0];
+    intercept_try_y = ukf->x_[1];
+
+    dist_target_intercept = sqrt((hunter_x - intercept_try_x) * (hunter_x - intercept_try_x)
+                                 + (hunter_y - intercept_try_y) * (hunter_y - intercept_try_y));
+    time_intercept = dist_target_intercept / max_v;
+
+    double diff_time_intercept = fabs(t_mid - time_intercept);
+
+    //std::cout << timestamp << " " << t_mid << " " << time_intercept << " " << diff_time_intercept << endl;
+
+    if(best_deal > diff_time_intercept){
+      intercept_x = intercept_try_x;
+      intercept_y = intercept_try_y;
+    }
+
+  }
+
+  ukf -> x_ = x;
+  ukf -> P_ = P;
+
 }
 
 int main()
@@ -83,7 +144,7 @@ int main()
 
   // Create a UKF instance
   UKF ukf;
-  
+
   double target_x = 0.0;
   double target_y = 0.0;
 
@@ -91,26 +152,25 @@ int main()
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
-
     if (length && length > 2 && data[0] == '4' && data[1] == '2')
     {
 
       auto s = hasData(std::string(data));
       if (s != "") {
-      	
-      	
+
+
         auto j = json::parse(s);
         std::string event = j[0].get<std::string>();
-        
+
         if (event == "telemetry") {
           // j[1] is the data JSON object
 
           double hunter_x = std::stod(j[1]["hunter_x"].get<std::string>());
           double hunter_y = std::stod(j[1]["hunter_y"].get<std::string>());
           double hunter_heading = std::stod(j[1]["hunter_heading"].get<std::string>());
-          
+
           string lidar_measurment = j[1]["lidar_measurement"];
-          
+
           MeasurementPackage meas_package_L;
           istringstream iss_L(lidar_measurment);
           long long timestamp_L;
@@ -129,11 +189,14 @@ int main()
           meas_package_L.raw_measurements_ << px, py;
           iss_L >> timestamp_L;
           meas_package_L.timestamp_ = timestamp_L;
-          
+
     	    ukf.ProcessMeasurement(meas_package_L);
-		 
+
+          //std::cout << "L" << px << " " << py << std::endl;
+          //std::cout << "L" << ukf.x_[0] << " " << ukf.x_[1] << std::endl;
+
     	    string radar_measurment = j[1]["radar_measurement"];
-          
+
           MeasurementPackage meas_package_R;
           istringstream iss_R(radar_measurment);
     	    long long timestamp_R;
@@ -160,10 +223,15 @@ int main()
           target_x = ukf.x_[0];
           target_y = ukf.x_[1];
 
+          //std::cout << "R" << ro << " " << theta << " " << ro_dot << std::endl;
+          //std::cout << "R" << ukf.x_[0] << " " << ukf.x_[1] << std::endl;
+
           //find interception point
           double intercept_x;
           double intercept_y;
           findInterceptLocation(hunter_x, hunter_y, &ukf, intercept_x, intercept_y);
+          //intercept_x = target_x;
+          //intercept_y = target_y;
 
           double heading_to_target = atan2(intercept_y - hunter_y, intercept_x - hunter_x);
           while (heading_to_target > M_PI) heading_to_target-=2.*M_PI;
@@ -174,14 +242,15 @@ int main()
           while (heading_difference <-M_PI) heading_difference+=2.*M_PI;
 
           double distance_difference = sqrt((intercept_y - hunter_y)*(intercept_y - hunter_y) + (intercept_x - hunter_x)*(intercept_x - hunter_x));
+          distance_difference = fmin(fmax(distance_difference, -1000), 1000);
 
           json msgJson;
           msgJson["turn"] = heading_difference;
-          msgJson["dist"] = distance_difference; 
+          msgJson["dist"] = distance_difference;
           auto msg = "42[\"move_hunter\"," + msgJson.dump() + "]";
-          // std::cout << msg << std::endl;
+          std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-	  
+
         }
       } else {
         // Manual driving
